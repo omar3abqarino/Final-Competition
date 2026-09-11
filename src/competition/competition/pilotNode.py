@@ -1,8 +1,11 @@
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import Float32
 from geometry_msgs.msg import Twist
 import sys, tty, termios, select
 
+
+SPEED_OF_SOUND = 343 / 10**(-4) # cm/us
 
 class PilotTeleopNode(Node):
     def __init__(self):
@@ -13,13 +16,16 @@ class PilotTeleopNode(Node):
         self.linear_target = self.get_parameter('linear_target').value
         self.angular_target = self.get_parameter('angular_target').value
         self.cmdPub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.ultrasonic_sensor = self.create_subscription(Float32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
+
         self.timer = self.create_timer(0.05, self.control_loop)  
         self.settings = termios.tcgetattr(sys.stdin)
         self.get_logger().info('WASD to drive, X to stop, Q to quit.')
+        
     # read keys from keyb
     def get_key(self):
         tty.setraw(sys.stdin.fileno())
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.0)
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
         key = sys.stdin.read(1) if rlist else ''
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
         return key
@@ -29,31 +35,46 @@ class PilotTeleopNode(Node):
 
         linTarget = 0.0
         angTarget = 0.0
+        
         # based on key do smt
         if key == 'w':
-            linTarget = self.linear_target
+            linTarget = 1.0
+            self.get_logger().info("w") 
         elif key == 's':
-            linTarget = -self.linear_target
+            linTarget = -1.0
+            self.get_logger().info("s")
         elif key == 'a':
-            angTarget = self.angular_target
+            angTarget = 1.0
+            self.get_logger().info("a")
         elif key == 'd':
-            angTarget = -self.angular_target
+            angTarget = -1.0
+            self.get_logger().info("d")
         elif key == 'q':
             self.cmdPub.publish(Twist())
             rclpy.shutdown()
             return
-      
+
 
         # teist msg
         twist = Twist()
-        twist.linear.x = linOut
-        twist.angular.z = angOut
+        twist.linear.x = linTarget
+        twist.angular.z = angTarget
         self.cmdPub.publish(twist)
+
+    def ultrasonic_callback(self, time):
+        #d = vt, d in cm.
+        distance  = (time/2) * SPEED_OF_SOUND
+
+        if distance <= 10:
+            self.get_logger(f"Bad Distance = {distance}")
+        else:
+            self.get_logger(f"Good Distance = {distance}")
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = PilotTeleopNode()
+    
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
