@@ -17,11 +17,24 @@ class PilotTeleopNode(Node):
         self.settings = termios.tcgetattr(sys.stdin)
         self.get_logger().info('WASD to drive, X to stop, Q to quit.')
     # read keys from keyb
-    def get_key(self):
+     def get_key(self):
         tty.setraw(sys.stdin.fileno())
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.0)
+
+        rlist, _, _ = select.select(
+            [sys.stdin],
+            [],
+            [],
+            0.0
+        )
+
         key = sys.stdin.read(1) if rlist else ''
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
+
+        termios.tcsetattr(
+            sys.stdin,
+            termios.TCSADRAIN,
+            self.settings
+        )
+
         return key
 
     def control_loop(self):
@@ -46,8 +59,8 @@ class PilotTeleopNode(Node):
 
         # teist msg
         twist = Twist()
-        twist.linear.x = linOut
-        twist.angular.z = angOut
+        twist.linear.x = linTarget
+        twist.angular.z = angTarget
         self.cmdPub.publish(twist)
 
 
