@@ -1,0 +1,19 @@
+# goal
+
+float32 forward_distance
+float32 target_x
+float32 target_yaw
+float32  turn_angle
+
+---
+
+# result
+
+bool success
+string message
+---
+
+# feedback
+
+string current_action
+float32 progress
