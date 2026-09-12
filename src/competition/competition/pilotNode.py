@@ -12,11 +12,12 @@ LINEAR_VEL = 5.0
 ANGULAR_VEL = 1.0
 
 # Define time constants for movement since there is no odometry
-ROTATE_TIME = math.radians(90.0) / ANGULAR_VEL      # v = d / t
+THETA = 90.0
+ROTATE_THETA_TIME = math.radians(THETA) / ANGULAR_VEL      # v = d / t
 PAUSE_TIME = 1.5
 
-SEARCH_FORWARD_TIME = 1.0
-SEARCH_LINEAR_VEL = 1.0
+SEARCH_MOVE_TIME = 1.0
+SEARCH_LINEAR_VEL = 1.5
 
 # Number of scrolls to be detected
 REQUIRED_SCROLLS = 2
@@ -30,6 +31,7 @@ class PilotTeleopNode(Node):
         self.ismanual.data = False
         self.is_manual_pub = self.create_publisher(Bool, '/is_manual', 10)
 
+        # Parameters for linear and angular velocities
         self.declare_parameter('linear_target', 0.2)
         self.declare_parameter('angular_target', 1.0)
 
@@ -37,21 +39,25 @@ class PilotTeleopNode(Node):
         self.angular_target = self.get_parameter('angular_target').value
 
         self.cmdPub = self.create_publisher(Twist, '/cmd_vel', 10)
+        # Ultrasonic gateway topic
         self.ultasonic_safety_pub = self.create_publisher(Twist, '/cmd_vel_requested', 10)
         self.ultrasonic_sensor = self.create_subscription(Int32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
+        
+        # Define the phase that the robot is in to help in autonomous movement
+        self.search_phase = "ROTATE"
+        self.search_timer = time.monotonic()  # Start stopwatch to estimate time
+
+        # Subscribe to the scroll detection confirmation
+        self.confirmed_count = 0
+        self.confirmed_sub = self.create_subscription(Int32, '/scroll_detection_confirm', self.confirmed_callback, 10)
+
         # Repeat the loop every 0.05 seconds
         self.timer = self.create_timer(0.05, self.control_loop)  
 
         self.settings = termios.tcgetattr(sys.stdin)
         self.get_logger().info('WASD to drive, (*) to switch to manual, Q to quit.')
         
-        # Define the phase that the robot is in to help in autonomous movement
-        self.search_phase = "ROTATE"
-        self.search_timer = time.monotonic()  # Start stopwatch to estimate time
 
-        # Subscribe to the detection confirmation
-        self.confirmed_count = 0
-        self.confirmed_sub = self.create_subscription(Int32, '/scroll_detection_confirm', self.confirmed_callback, 10)
     # read keys from keyboard
     def get_key(self):
         tty.setraw(sys.stdin.fileno())
@@ -101,10 +107,9 @@ class PilotTeleopNode(Node):
             
         else:
             #automatic logic
-
+            linTarget, linTarget1, angTarget = self.auto_strategy_1()
         
-            linTarget = 0.0
-            angTarget = 0.0
+            
 
         # twist msg
         twist = Twist()
@@ -112,6 +117,60 @@ class PilotTeleopNode(Node):
         twist.angular.z = angTarget
         twist.linear.y = linTarget1
         self.cmdPub.publish(twist)
+
+
+    def confirmed_callback(self, msg):
+        if msg.data != self.confirmed_count:
+            self.confirmed_count = msg.data
+            self.get_logger.info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
+
+    # First Strategy for autonomous
+    def auto_strategy_1(self):
+        
+        # If both scrolls are detected --> stop
+        if self.confirmed_count >= REQUIRED_SCROLLS:
+            return (0.0, 0.0, 0.0)
+
+        # Start a timer
+        now = time.monotonic()
+        # Calculate time passed
+        time_passed = now - self.search_timer
+
+        linTarget, linTarget1, angTarget = 0.0, 0.0, 0.0
+
+        # Check the search phase
+        if self.search_phase == 'ROTATE':
+            angTarget = ANGULAR_VEL
+            # If time for rotation ends, start time for pause and search
+            if time_passed >= ROTATE_THETA_TIME:
+                self.search_phase = 'PAUSE'
+                self.search_timer = now
+
+        elif self.search_phase == 'PAUSE':
+            # Don't change the values of the velocities
+            ...
+            if time_passed >= PAUSE_TIME:
+                self.search_phase = 'STRAFE'
+                self.search_timer = now
+
+        elif self.search_phase == 'STRAFE':
+            linTarget1 = SEARCH_LINEAR_VEL
+            if time_passed >= SEARCH_MOVE_TIME:
+                self.search_phase = 'ROTATE_BACK'
+                self.search_timer = now
+
+        elif self.search_phase == 'ROTATE_BACK':
+            linTarget1 = -ANGULAR_VEL
+            if time_passed >= ROTATE_THETA_TIME:
+                self.search_phase = 'ROTATE'
+                self.search_timer = now
+
+        # Return the values of the velocities
+        return linTarget, linTarget1, angTarget
+        
+        
+
+        
 
     def ultrasonic_callback(self, msg):
         
