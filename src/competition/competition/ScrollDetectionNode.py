@@ -4,6 +4,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32
 from cv_bridge import CvBridge
 import cv2
+from rclpy.executors import ExternalShutdownException
 import numpy as np
 
 
@@ -38,6 +39,9 @@ class ScrollDetectionNode(Node):
         except Exception as e:
             self.get_logger().error(f'conversion failed : {e}')
             return
+
+        cv2.imshow("Camera Capture", frame)
+        cv2.waitKey(1) 
 
         detection = self.detect(frame)
 
@@ -86,9 +90,15 @@ class ScrollDetectionNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ScrollDetectionNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    finally:
+        
+        if rclpy.ok():
+            node.destroy_node()
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
