@@ -6,6 +6,7 @@ from cv_bridge import CvBridge
 import cv2
 from rclpy.executors import ExternalShutdownException
 import numpy as np
+import time
 
 
 
@@ -15,13 +16,19 @@ class ScrollDetectionNode(Node):
         # number of detc needed to be done
         self.declare_parameter('numOfdetections', 2)
         self.declare_parameter('framesNeeded', 5)
+        # Added cooldown to avoid double detection of same scroll
+        self.declare_parameter('cooldown', 2.0)
 
         self.numOfdetections = self.get_parameter('numOfdetections').value
         self.framesNeeded = self.get_parameter('framesNeeded').value
+        self.cooldown = self.get_parameter('cooldown').value
 
         self.bridge = CvBridge()
         self.hits = 0
         self.done = False
+        self.confirmed_count = 0
+        # Initialize variable to trigger cooldown after detection
+        self.last_confirm_time = -1
 
         # subscribe to image
         self.imgSub = self.create_subscription(Image, '/mono/image', self.image_callback, 10)
@@ -31,8 +38,8 @@ class ScrollDetectionNode(Node):
         self.confirm_pub = self.create_publisher(Int32, '/scroll_detection_confirm', 10)
 
     def image_callback(self, msg):
-        if self.done:
-            return
+        # if self.done:
+        #     return
         try:
             # read frame convert using cv2 bridge mono8 = get gray
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
@@ -42,19 +49,26 @@ class ScrollDetectionNode(Node):
 
         cv2.imshow("Camera Capture", frame)
         cv2.waitKey(1)
-        self.get_logger().info("before")
         detection = self.detect(frame)
-        self.get_logger().info("after")
 
-        if len(detection) >= self.numOfdetections:
+        # At least one detection
+        if len(detection) >= 1:
             self.hits += 1
         else:
             self.hits = 0
 
-        # if self.hits >= self.framesNeeded:
-        #     self.done = True
-        #     self.statusPub.publish(Bool(data=True))
-        #     self.get_logger().info('detection done')
+        if self.hits >= self.framesNeeded:
+            now = time.monotonic()
+            if now - self.last_confirm_time >= self.cooldown:
+                self.confirmed_count += 1
+                self.last_confirm_time = now
+                self.hits = 0
+                self.confirm_pub.publish(Int32(data = self.confirmed_count))
+
+                if self.confirmed_count >= self.numOfdetections:
+                    self.done = True
+                    self.statusPub.publish(Bool(data=True))
+                    self.get_logger().info('detection done')
 
     def detect(self, frame):
         # TODO : add model detection here, placeholder = edge/contour based

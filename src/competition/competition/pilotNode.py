@@ -107,8 +107,9 @@ class PilotTeleopNode(Node):
             
         else:
             #automatic logic
-            linTarget, linTarget1, angTarget = self.auto_strategy_1()
-        
+            if key == '1':
+                linTarget, linTarget1, angTarget = self.auto_strategy_1()
+            # TODO: Publish on /cmd_vel_requested
             
 
         # twist msg
