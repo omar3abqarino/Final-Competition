@@ -12,7 +12,7 @@ def main():
     distortion_coefficients = np.array([-0.27687039 , 0.2629094 , -0.03872163, -0.01716333, -0.16969159 ])
 
     # ---- create object ---- #
-    mono_publisher = mono(camera_index=2, publisher=True, topic_name="/mono/image", correction = 0, compressed = True) # setting topic name is optional
+    mono_publisher = mono(camera_index=2, publisher=True, topic_name="/mono/image", correction = 0, compressed = False) # setting topic name is optional
     # mono_publisher = mono(camera_index=1, publisher=True, topic_name="/mono", correction = 0, compressed = False) # setting topic name is optional
 
     mono_publisher.set_mtx(intrinsic_matrix)

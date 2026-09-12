@@ -8,7 +8,7 @@ from rclpy.executors import ExternalShutdownException
 
 
 SPEED_OF_SOUND = 343 / 10**(-4) # cm/us
-LINEAR_VEL = 1.0
+LINEAR_VEL = 5.0
 ANGULAR_VEL = 1.0
 
 class PilotTeleopNode(Node):
@@ -41,32 +41,45 @@ class PilotTeleopNode(Node):
         key = self.get_key()
 
         linTarget = 0.0
+        linTarget1 = 0.0
         angTarget = 0.0
         
         # based on key do smt
-        if key == 'w':
-            linTarget = LINEAR_VEL
-            self.get_logger().info("w") 
-        elif key == 's':
-            linTarget = -LINEAR_VEL
-            self.get_logger().info("s")
-        elif key == 'a':
-            angTarget = ANGULAR_VEL
-            self.get_logger().info("a")
-        elif key == 'd':
-            angTarget = -ANGULAR_VEL
-            self.get_logger().info("d")
-        elif key == '*':
+
+        if key == '*':
             self.get_logger().info("Control Switched!!")
             self.ismanual.data = not self.ismanual.data
             self.is_manual_pub.publish(self.ismanual)
-
         elif key == 'q':
             self.cmdPub.publish(Twist())
             rclpy.shutdown()
             return
 
-        if not self.ismanual.data:
+        if self.ismanual.data:
+            if key == 'w':
+                linTarget = LINEAR_VEL
+                self.get_logger().info("w") 
+            elif key == 's':
+                linTarget = -LINEAR_VEL
+                self.get_logger().info("s")
+            elif key == 'a':
+                angTarget = ANGULAR_VEL
+                self.get_logger().info("a")
+            elif key == 'd':
+                angTarget = -ANGULAR_VEL
+                self.get_logger().info("d")
+            elif key == 'k':
+                linTarget1 = -LINEAR_VEL
+                self.get_logger().info("s")
+            elif key == 'j':
+                linTarget1 = LINEAR_VEL
+                self.get_logger().info("s")
+
+            
+        else:
+            #automatic logic
+
+        
             linTarget = 0.0
             angTarget = 0.0
 
@@ -74,21 +87,22 @@ class PilotTeleopNode(Node):
         twist = Twist()
         twist.linear.x = linTarget
         twist.angular.z = angTarget
+        twist.linear.y = linTarget1
         self.cmdPub.publish(twist)
 
     def ultrasonic_callback(self, msg):
         
-        self.get_logger().info(msg.data)
+        self.get_logger().info(str(msg.data))
         distance  = msg.data
 
         if distance <= 10:
-            self.get_logger(f"Bad Distance = {distance}")
+            self.get_logger().info(f"Bad Distance = {distance}")
             msg = Twist()
             msg.linear.x = 0.0
             msg.angular.z = 0.0
             self.ultasonic_safety_pub.publish(msg)
         else:
-            self.get_logger(f"Good Distance = {distance}")
+            self.get_logger().info(f"Good Distance = {distance}")
 
 
 def main(args=None):

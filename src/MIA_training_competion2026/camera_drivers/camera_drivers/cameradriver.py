@@ -43,10 +43,10 @@ class cameradriver(Node):
     #--------------subscriber code---------#
     def init_subscriber(self): # overwritten in kinect_v1
         if self.compressed:
-            self.subscription = self.create_subscription(CompressedImage, self.topic, self.subscribe, qos_profile)
+            self.subscription = self.create_subscription(CompressedImage, self.topic, self.subscribe, 10)
             self.get_logger().info('init compressed subscriber')
         else:
-            self.subscription = self.create_subscription(Image, self.topic, self.subscribe, qos_profile)
+            self.subscription = self.create_subscription(Image, self.topic, self.subscribe, 10)
             self.get_logger().info('init subscriber')
 
     def subscribe(self,msg):
@@ -165,8 +165,8 @@ class kinect_v1Driver(cameradriver):
             super().set_mode()
 
     def init_subscriber(self):
-        self.subscription_rgb = self.create_subscription(Image, self.topic_rgb, self.subscribe_rgb, qos_profile)
-        self.subscription_depth = self.create_subscription(Image, self.topic_depth, self.subscribe_depth, qos_profile)
+        self.subscription_rgb = self.create_subscription(Image, self.topic_rgb, self.subscribe_rgb, 10)
+        self.subscription_depth = self.create_subscription(Image, self.topic_depth, self.subscribe_depth, 10)
         
     def subscribe_rgb(self,msg):
         self.msg_rgb = msg

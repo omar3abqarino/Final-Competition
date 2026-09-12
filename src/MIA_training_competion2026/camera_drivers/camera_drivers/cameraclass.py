@@ -63,9 +63,9 @@ class cameraClass(Node):
     # creating publisher node
     def init_publisher(self): # overwritten in stereo
         if self.compressed:
-            self.publisher = self.create_publisher(CompressedImage, self.topic_name, qos_profile)
+            self.publisher = self.create_publisher(CompressedImage, self.topic_name, 10)
         else:
-            self.publisher = self.create_publisher(Image, self.topic_name, qos_profile)
+            self.publisher = self.create_publisher(Image, self.topic_name, 10)
         print("initialized camera_publisher node")
 
     def publish(self): # overwritten in stereo
@@ -209,20 +209,20 @@ class stereo(cameraClass):
         
         if self.compressed:
             if self.stereo_i == 1:
-                self.publisher = self.create_publisher(CompressedImage, "left_stereo", qos_profile)
+                self.publisher = self.create_publisher(CompressedImage, "left_stereo", 10)
             elif self.stereo_i == 2:
-                self.publisher = self.create_publisher(CompressedImage, "right_stereo", qos_profile)
+                self.publisher = self.create_publisher(CompressedImage, "right_stereo", 10)
             else:
-                self.publisher_l = self.create_publisher(CompressedImage, "left_stereo", qos_profile)
-                self.publisher_r = self.create_publisher(CompressedImage, "right_stereo", qos_profile)
+                self.publisher_l = self.create_publisher(CompressedImage, "left_stereo", 10)
+                self.publisher_r = self.create_publisher(CompressedImage, "right_stereo", 10)
         else:
             if self.stereo_i == 1:
-                self.publisher = self.create_publisher(Image, "left_stereo", qos_profile)
+                self.publisher = self.create_publisher(Image, "left_stereo", 10)
             elif self.stereo_i == 2:
-                self.publisher = self.create_publisher(Image, "right_stereo", qos_profile)
+                self.publisher = self.create_publisher(Image, "right_stereo", 10)
             else:
-                self.publisher_l = self.create_publisher(Image, "left_stereo", qos_profile)
-                self.publisher_r = self.create_publisher(Image, "right_stereo", qos_profile)
+                self.publisher_l = self.create_publisher(Image, "left_stereo", 10)
+                self.publisher_r = self.create_publisher(Image, "right_stereo", 10)
         print("stereo camera publisher inialized")
 
     def init_server(self): 
