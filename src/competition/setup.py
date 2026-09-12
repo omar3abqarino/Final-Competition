@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'opencv-python', 'torch', ],
     zip_safe=True,
     maintainer='a',
     maintainer_email='omar3abqarino@gmail.com',

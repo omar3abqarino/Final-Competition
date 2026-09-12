@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from std_msgs.msg import Bool, Float32
+from std_msgs.msg import Bool, Float32, Int32
 from cv_bridge import CvBridge
 import cv2
 from rclpy.executors import ExternalShutdownException
@@ -27,7 +27,8 @@ class ScrollDetectionNode(Node):
         self.imgSub = self.create_subscription(Image, '/mono/image', self.image_callback, 10)
         # send signal to other nodes that detection done
         self.statusPub = self.create_publisher(Bool, '/scroll_detection_done', 10)
-        # self.ultrasonic_sensor = self.create_subscription(Float32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
+        # Publish confirmation message to the autonomous movement
+        self.confirm_pub = self.create_publisher(Int32, '/scroll_detection_confirm', 10)
 
     def image_callback(self, msg):
         if self.done:
