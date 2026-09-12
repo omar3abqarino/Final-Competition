@@ -3,13 +3,24 @@ from rclpy.node import Node
 from std_msgs.msg import Float32, Bool, Int32
 from geometry_msgs.msg import Twist
 import sys, tty, termios, select
+import math, time
 from rclpy.executors import ExternalShutdownException
 
 
 
-SPEED_OF_SOUND = 343 / 10**(-4) # cm/us
 LINEAR_VEL = 5.0
 ANGULAR_VEL = 1.0
+
+# Define time constants for movement since there is no odometry
+ROTATE_TIME = math.radians(90.0) / ANGULAR_VEL      # v = d / t
+PAUSE_TIME = 1.5
+
+SEARCH_FORWARD_TIME = 1.0
+SEARCH_LINEAR_VEL = 1.0
+
+# Number of scrolls to be detected
+REQUIRED_SCROLLS = 2
+
 
 class PilotTeleopNode(Node):
     def __init__(self):
@@ -44,7 +55,7 @@ class PilotTeleopNode(Node):
         linTarget1 = 0.0
         angTarget = 0.0
         
-        # based on key do smt
+        # based on key do sth
 
         if key == '*':
             self.get_logger().info("Control Switched!!")

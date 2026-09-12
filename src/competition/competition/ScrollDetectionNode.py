@@ -8,7 +8,6 @@ from rclpy.executors import ExternalShutdownException
 import numpy as np
 
 
-SPEED_OF_LIGHT = 343 / 10**(-4) # cm/us
 
 class ScrollDetectionNode(Node):
     def __init__(self):
@@ -75,15 +74,6 @@ class ScrollDetectionNode(Node):
                 boxes.append((x, y, w, h))
         return boxes
 
-
-    # def ultrasonic_callback(self, time):
-    #     #d = vt, d in cm.
-    #     distance  = (time/2) * SPEED_OF_LIGHT
-
-    #     if distance <= 10:
-    #         return True
-    #     else:
-    #         return False
 
 
 
