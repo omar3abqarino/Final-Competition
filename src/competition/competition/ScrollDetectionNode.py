@@ -28,7 +28,7 @@ class ScrollDetectionNode(Node):
         self.imgSub = self.create_subscription(Image, '/mono/image', self.image_callback, 10)
         # send signal to other nodes that detection done
         self.statusPub = self.create_publisher(Bool, '/scroll_detection_done', 10)
-        self.ultrasonic_sensor = self.create_subscription(Float32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
+        # self.ultrasonic_sensor = self.create_subscription(Float32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
 
     def image_callback(self, msg):
         if self.done:
@@ -41,19 +41,20 @@ class ScrollDetectionNode(Node):
             return
 
         cv2.imshow("Camera Capture", frame)
-        cv2.waitKey(1) 
-
+        cv2.waitKey(1)
+        self.get_logger().info("before")
         detection = self.detect(frame)
+        self.get_logger().info("after")
 
         if len(detection) >= self.numOfdetections:
             self.hits += 1
         else:
             self.hits = 0
 
-        if self.hits >= self.framesNeeded:
-            self.done = True
-            self.statusPub.publish(Bool(data=True))
-            self.get_logger().info('detection done')
+        # if self.hits >= self.framesNeeded:
+        #     self.done = True
+        #     self.statusPub.publish(Bool(data=True))
+        #     self.get_logger().info('detection done')
 
     def detect(self, frame):
         # TODO : add model detection here, placeholder = edge/contour based
@@ -75,14 +76,14 @@ class ScrollDetectionNode(Node):
         return boxes
 
 
-    def ultrasonic_callback(self, time):
-        #d = vt, d in cm.
-        distance  = (time/2) * SPEED_OF_LIGHT
+    # def ultrasonic_callback(self, time):
+    #     #d = vt, d in cm.
+    #     distance  = (time/2) * SPEED_OF_LIGHT
 
-        if distance <= 10:
-            return True
-        else:
-            return False
+    #     if distance <= 10:
+    #         return True
+    #     else:
+    #         return False
 
 
 

@@ -4,7 +4,7 @@ import rclpy
 def main():
     rclpy.init(args=None)
     # ---- create object ---- #
-    mono_subscriber = monoDriver(subscriber=True, topic="/mono/compressed", compressed = True) # defualt topic name is "mono"
+    mono_subscriber = monoDriver(subscriber=True, topic="/mono/image", compressed = False) # defualt topic name is "mono"
 
     while rclpy.ok():
         
