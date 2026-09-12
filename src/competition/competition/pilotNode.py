@@ -25,22 +25,34 @@ REQUIRED_SCROLLS = 2
 class PilotTeleopNode(Node):
     def __init__(self):
         super().__init__('pilot_teleop_node')
+        # Manual Messages
         self.ismanual = Bool()
         self.ismanual.data = False
+        self.is_manual_pub = self.create_publisher(Bool, '/is_manual', 10)
+
         self.declare_parameter('linear_target', 0.2)
         self.declare_parameter('angular_target', 1.0)
+
         self.linear_target = self.get_parameter('linear_target').value
         self.angular_target = self.get_parameter('angular_target').value
+
         self.cmdPub = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.is_manual_pub = self.create_publisher(Bool, '/is_manual', 10)
         self.ultasonic_safety_pub = self.create_publisher(Twist, '/cmd_vel_requested', 10)
         self.ultrasonic_sensor = self.create_subscription(Int32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
-
+        # Repeat the loop every 0.05 seconds
         self.timer = self.create_timer(0.05, self.control_loop)  
+
         self.settings = termios.tcgetattr(sys.stdin)
         self.get_logger().info('WASD to drive, (*) to switch to manual, Q to quit.')
         
-    # read keys from keyb
+        # Define the phase that the robot is in to help in autonomous movement
+        self.search_phase = "ROTATE"
+        self.search_timer = time.monotonic()  # Start stopwatch to estimate time
+
+        # Subscribe to the detection confirmation
+        self.confirmed_count = 0
+        self.confirmed_sub = self.create_subscription(Int32, '/scroll_detection_confirm', self.confirmed_callback, 10)
+    # read keys from keyboard
     def get_key(self):
         tty.setraw(sys.stdin.fileno())
         rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
