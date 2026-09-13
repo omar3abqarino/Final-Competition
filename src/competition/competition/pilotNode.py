@@ -10,6 +10,7 @@ from rclpy.executors import ExternalShutdownException
 
 LINEAR_VEL = 5.0
 ANGULAR_VEL = 1.0
+KEY_TIMEOUT = 0.2
 
 # Define time constants for movement since there is no odometry
 THETA = 90.0
@@ -27,6 +28,7 @@ class PilotTeleopNode(Node):
     def __init__(self):
         super().__init__('pilot_teleop_node')
         # Manual Messages
+        self.last_seen = {}
         self.ismanual = Bool()
         self.ismanual.data = False
         self.is_manual_pub = self.create_publisher(Bool, '/is_manual', 10)
@@ -54,7 +56,11 @@ class PilotTeleopNode(Node):
         # Repeat the loop every 0.05 seconds
         self.timer = self.create_timer(0.05, self.control_loop)  
 
-        self.settings = termios.tcgetattr(sys.stdin)
+        try:
+            self.settings = termios.tcgetattr(sys.stdin)
+        except termios.error:
+            with open('/dev/tty', 'r') as tty_file:
+                self.settings = termios.tcgetattr(tty_file.fileno())
         self.get_logger().info('WASD to drive, (*) to switch to manual, Q to quit.')
         
 
@@ -68,12 +74,25 @@ class PilotTeleopNode(Node):
 
     def control_loop(self):
         key = self.get_key()
+        # now = time.monotonic()
+        # if key:
+        #     self.last_seen[key] = now
 
+        # def held(k):
+        #     return (now - self.last_seen.get(k, 0)) < KEY_TIMEOUT
+
+
+        
         linTarget = 0.0
         linTarget1 = 0.0
         angTarget = 0.0
         
         # based on key do sth
+        
+
+        # linTarget = LINEAR_VEL if held('w') else (-LINEAR_VEL if held('s') else 0.0)
+        # angTarget = ANGULAR_VEL if held('a') else (-ANGULAR_VEL if held('d') else 0.0)
+        # linTarget1 = LINEAR_VEL if held('j') else (-LINEAR_VEL if held('k') else 0.0)
 
         if key == '*':
             self.get_logger().info("Control Switched!!")
@@ -99,10 +118,10 @@ class PilotTeleopNode(Node):
                 self.get_logger().info("d")
             elif key == 'k':
                 linTarget1 = -LINEAR_VEL
-                self.get_logger().info("s")
+                self.get_logger().info("k")
             elif key == 'j':
                 linTarget1 = LINEAR_VEL
-                self.get_logger().info("s")
+                self.get_logger().info("j")
 
             # Twist msg
             twist = Twist()
@@ -115,6 +134,7 @@ class PilotTeleopNode(Node):
             #automatic logic
             if key == '1':
                 linTarget, linTarget1, angTarget = self.auto_strategy_1()
+                self.ismanual.data = False
             # Publish on /cmd_vel_requested
             twist_req = Twist()
             twist_req.linear.x = linTarget
@@ -128,7 +148,7 @@ class PilotTeleopNode(Node):
     def confirmed_callback(self, msg):
         if msg.data != self.confirmed_count:
             self.confirmed_count = msg.data
-            self.get_logger.info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
+            self.get_logger().info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
 
     # First Strategy for autonomous
     def auto_strategy_1(self):
@@ -151,6 +171,7 @@ class PilotTeleopNode(Node):
             if time_passed >= ROTATE_THETA_TIME:
                 self.search_phase = 'PAUSE'
                 self.search_timer = now
+            self.get_logger().info("ROTATED")
 
         elif self.search_phase == 'PAUSE':
             # Don't change the values of the velocities
@@ -158,18 +179,21 @@ class PilotTeleopNode(Node):
             if time_passed >= PAUSE_TIME:
                 self.search_phase = 'STRAFE'
                 self.search_timer = now
+            self.get_logger().info("PAUSED")
 
         elif self.search_phase == 'STRAFE':
             linTarget1 = SEARCH_LINEAR_VEL
             if time_passed >= SEARCH_MOVE_TIME:
                 self.search_phase = 'ROTATE_BACK'
                 self.search_timer = now
+            self.get_logger().info("STRAFED")
 
         elif self.search_phase == 'ROTATE_BACK':
-            linTarget1 = -ANGULAR_VEL
+            angTarget = -ANGULAR_VEL
             if time_passed >= ROTATE_THETA_TIME:
                 self.search_phase = 'ROTATE'
                 self.search_timer = now
+            self.get_logger().info("BACK_ROTATED")
 
         # Return the values of the velocities
         return linTarget, linTarget1, angTarget
@@ -188,7 +212,7 @@ class PilotTeleopNode(Node):
             # msg = Twist()
             # msg.linear.x = 0.0
             # msg.angular.z = 0.0
-            # self.ultasonic_safety_pub.publish(msg)
+            # self.ultrasonic_safety_pub.publish(msg)
         else:
             self.get_logger().info(f"Good Distance = {distance}")
 
