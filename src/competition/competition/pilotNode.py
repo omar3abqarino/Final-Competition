@@ -40,7 +40,7 @@ class PilotTeleopNode(Node):
 
         self.cmdPub = self.create_publisher(Twist, '/cmd_vel', 10)
         # Ultrasonic gateway topic
-        self.ultasonic_safety_pub = self.create_publisher(Twist, '/cmd_vel_requested', 10)
+        self.ultrasonic_safety_pub = self.create_publisher(Twist, '/cmd_vel_requested', 10)
         self.ultrasonic_sensor = self.create_subscription(Int32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
         
         # Define the phase that the robot is in to help in autonomous movement
@@ -104,20 +104,25 @@ class PilotTeleopNode(Node):
                 linTarget1 = LINEAR_VEL
                 self.get_logger().info("s")
 
+            # Twist msg
+            twist = Twist()
+            twist.linear.x = linTarget
+            twist.angular.z = angTarget
+            twist.linear.y = linTarget1
+            self.cmdPub.publish(twist)
             
         else:
             #automatic logic
             if key == '1':
                 linTarget, linTarget1, angTarget = self.auto_strategy_1()
-            # TODO: Publish on /cmd_vel_requested
+            # Publish on /cmd_vel_requested
+            twist_req = Twist()
+            twist_req.linear.x = linTarget
+            twist_req.linear.y = linTarget1
+            twist_req.angular.z = angTarget
+            self.ultrasonic_safety_pub.publish(twist_req)
             
 
-        # twist msg
-        twist = Twist()
-        twist.linear.x = linTarget
-        twist.angular.z = angTarget
-        twist.linear.y = linTarget1
-        self.cmdPub.publish(twist)
 
 
     def confirmed_callback(self, msg):
@@ -178,12 +183,12 @@ class PilotTeleopNode(Node):
         self.get_logger().info(str(msg.data))
         distance  = msg.data
 
-        if distance <= 10:
+        if distance <= 20:
             self.get_logger().info(f"Bad Distance = {distance}")
-            msg = Twist()
-            msg.linear.x = 0.0
-            msg.angular.z = 0.0
-            self.ultasonic_safety_pub.publish(msg)
+            # msg = Twist()
+            # msg.linear.x = 0.0
+            # msg.angular.z = 0.0
+            # self.ultasonic_safety_pub.publish(msg)
         else:
             self.get_logger().info(f"Good Distance = {distance}")
 
