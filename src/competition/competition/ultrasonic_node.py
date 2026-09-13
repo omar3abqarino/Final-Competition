@@ -16,12 +16,12 @@ class UltrasonicNode(Node):
         self.declare_parameter('ultrasonic_topic', '/ultrasonic_distance')
         # Get Parameters
         self.input_vel_topic = self.get_parameter('input_vel_topic').value
-        self.output_vel_topic = self.get_parameter('input_vel_topic').value
-        self.ultrasonic_topic = self.get_parameter('input_vel_topic').value
+        self.output_vel_topic = self.get_parameter('output_vel_topic').value
+        self.ultrasonic_topic = self.get_parameter('ultrasonic_topic').value
         # Create Publishers and Subscribers
         self.out_pub = self.create_publisher(Twist, self.output_vel_topic, 10)
         self.create_subscription(Int32, self.ultrasonic_topic, self.ultrasonic_callback, 10)
-        self.create_subscription(Int32, self.input_vel_topic, self.req_vel_callback, 10)
+        self.create_subscription(Twist, self.input_vel_topic, self.req_vel_callback, 10)
 
         self.distance = math.inf
 
@@ -38,7 +38,7 @@ class UltrasonicNode(Node):
         output_vel = Twist()
         output_vel.linear.x = req_vel.linear.x
         output_vel.linear.y = req_vel.linear.y
-        output_vel.angular.z = req_vel.linear.z
+        output_vel.angular.z = req_vel.angular.z
 
         if self.distance <= 20 and output_vel.linear.x > 0:
             output_vel.linear.x = 0

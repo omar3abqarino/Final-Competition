@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             "pilot = competition.pilotNode:main",
             "detection = competition.ScrollDetectionNode:main",
+            "ultrasonic = competition.ultrasonic_node:main",
         ],
     },
 )

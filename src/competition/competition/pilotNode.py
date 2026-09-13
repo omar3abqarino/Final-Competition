@@ -128,7 +128,7 @@ class PilotTeleopNode(Node):
     def confirmed_callback(self, msg):
         if msg.data != self.confirmed_count:
             self.confirmed_count = msg.data
-            self.get_logger.info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
+            self.get_logger().info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
 
     # First Strategy for autonomous
     def auto_strategy_1(self):
@@ -166,7 +166,7 @@ class PilotTeleopNode(Node):
                 self.search_timer = now
 
         elif self.search_phase == 'ROTATE_BACK':
-            linTarget1 = -ANGULAR_VEL
+            angTarget = -ANGULAR_VEL
             if time_passed >= ROTATE_THETA_TIME:
                 self.search_phase = 'ROTATE'
                 self.search_timer = now
