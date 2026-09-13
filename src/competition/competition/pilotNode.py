@@ -1,15 +1,28 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Bool, Int32
+from std_msgs.msg import Float32, Bool, Int32, String
+from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
+from cv_bridge import CvBridge
 import sys, tty, termios, select
 import math, time
 from rclpy.executors import ExternalShutdownException
+from box_detection import detect_boxes
 
 
 
 LINEAR_VEL = 5.0
 ANGULAR_VEL = 1.0
+
+# Vision-based box search/approach tuning
+SEARCH_ANGULAR_VEL = 1.0
+CENTER_TOLERANCE = 0.08
+KP_ANGULAR = 1.2
+KP_LINEAR = 3.0
+STOP_HEIGHT_RATIO = 0.55
+
+# Number of scrolls to be detected
+REQUIRED_SCROLLS = 2
 
 # Define time constants for movement since there is no odometry
 THETA = 90.0
@@ -19,8 +32,7 @@ PAUSE_TIME = 1.5
 SEARCH_MOVE_TIME = 1.0
 SEARCH_LINEAR_VEL = 1.5
 
-# Number of scrolls to be detected
-REQUIRED_SCROLLS = 2
+SAFE_DISTANCE_CM = 10
 
 
 class PilotTeleopNode(Node):
@@ -42,10 +54,22 @@ class PilotTeleopNode(Node):
         # Ultrasonic gateway topic
         self.ultasonic_safety_pub = self.create_publisher(Twist, '/cmd_vel_requested', 10)
         self.ultrasonic_sensor = self.create_subscription(Int32, "/ultrasonic_distance", self.ultrasonic_callback, 10)
-        
+
+        # Camera subscription for box detection
+        self.bridge = CvBridge()
+        self.imgSub = self.create_subscription(Image, '/mono/image', self.image_callback, 10)
+        self.current_box = None
+        self.last_frame = None
+
+        self.active_strategy = 2
+
         # Define the phase that the robot is in to help in autonomous movement
-        self.search_phase = "ROTATE"
-        self.search_timer = time.monotonic()  # Start stopwatch to estimate time
+        self.strategy1_phase = "ROTATE"
+        self.strategy1_timer = time.monotonic()  # Start stopwatch to estimate time
+
+        self.strategy2_phase = "SEARCHING"
+
+        self.obstacle_close = False
 
         # Subscribe to the scroll detection confirmation
         self.confirmed_count = 0
@@ -55,19 +79,26 @@ class PilotTeleopNode(Node):
         self.timer = self.create_timer(0.05, self.control_loop)  
 
         self.settings = termios.tcgetattr(sys.stdin)
-        self.get_logger().info('WASD to drive, (*) to switch to manual, Q to quit.')
+        self.get_logger().info('WASD to drive, (*) to switch to manual, (n) to switch strategy, Q to quit.')
         
 
     # read keys from keyboard
-    def get_key(self):
+    def get_keys(self):
         tty.setraw(sys.stdin.fileno())
+        keys = []
         rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-        key = sys.stdin.read(1) if rlist else ''
+        if rlist:
+            keys.append(sys.stdin.read(1))
+            while True:
+                rlist, _, _ = select.select([sys.stdin], [], [], 0)
+                if not rlist:
+                    break
+                keys.append(sys.stdin.read(1))
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
-        return key
+        return keys
 
     def control_loop(self):
-        key = self.get_key()
+        keys = self.get_keys()
 
         linTarget = 0.0
         linTarget1 = 0.0
@@ -75,41 +106,53 @@ class PilotTeleopNode(Node):
         
         # based on key do sth
 
-        if key == '*':
+        if '*' in keys:
             self.get_logger().info("Control Switched!!")
             self.ismanual.data = not self.ismanual.data
             self.is_manual_pub.publish(self.ismanual)
-        elif key == 'q':
+        if 'q' in keys:
             self.cmdPub.publish(Twist())
             rclpy.shutdown()
             return
+        if 'n' in keys:
+            self.active_strategy = 2 if self.active_strategy == 1 else 1
+            if self.active_strategy == 1:
+                self.strategy1_phase = "ROTATE"
+                self.strategy1_timer = time.monotonic()
+            else:
+                self.strategy2_phase = "SEARCHING"
+            self.get_logger().info(f"Switched autonomous strategy -> strategy_{self.active_strategy}")
 
         if self.ismanual.data:
-            if key == 'w':
-                linTarget = LINEAR_VEL
-                self.get_logger().info("w") 
-            elif key == 's':
-                linTarget = -LINEAR_VEL
-                self.get_logger().info("s")
-            elif key == 'a':
-                angTarget = ANGULAR_VEL
-                self.get_logger().info("a")
-            elif key == 'd':
-                angTarget = -ANGULAR_VEL
-                self.get_logger().info("d")
-            elif key == 'k':
-                linTarget1 = -LINEAR_VEL
-                self.get_logger().info("s")
-            elif key == 'j':
-                linTarget1 = LINEAR_VEL
-                self.get_logger().info("s")
+            for key in keys:
+                if key == 'w':
+                    linTarget += LINEAR_VEL
+                    self.get_logger().info("w") 
+                elif key == 's':
+                    linTarget -= LINEAR_VEL
+                    self.get_logger().info("s")
+                elif key == 'a':
+                    angTarget += ANGULAR_VEL
+                    self.get_logger().info("a")
+                elif key == 'd':
+                    angTarget -= ANGULAR_VEL
+                    self.get_logger().info("d")
+                elif key == 'k':
+                    linTarget1 -= LINEAR_VEL
+                    self.get_logger().info("s")
+                elif key == 'j':
+                    linTarget1 += LINEAR_VEL
+                    self.get_logger().info("s")
 
             
         else:
             #automatic logic
-            linTarget, linTarget1, angTarget = self.auto_strategy_1()
-        
-            
+            if self.active_strategy == 1:
+                linTarget, linTarget1, angTarget = self.strategy_1()
+            else:
+                linTarget, linTarget1, angTarget = self.strategy_2()
+
+        linTarget, linTarget1, angTarget = self.apply_ultrasonic_safety(linTarget, linTarget1, angTarget)
 
         # twist msg
         twist = Twist()
@@ -122,11 +165,28 @@ class PilotTeleopNode(Node):
     def confirmed_callback(self, msg):
         if msg.data != self.confirmed_count:
             self.confirmed_count = msg.data
-            self.get_logger.info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
+            self.get_logger().info(f"Scroll Confirmed: {self.confirmed_count} out of {REQUIRED_SCROLLS}")
+
+    def image_callback(self, msg):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
+        except Exception as e:
+            self.get_logger().error(f'conversion failed: {e}')
+            return
+
+        boxes = detect_boxes(frame)
+        self.frame_width = frame.shape[1]
+        self.frame_height = frame.shape[0]
+        self.last_frame = frame
+
+        if boxes:
+            self.current_box = max(boxes, key=lambda b: b[2] * b[3])
+        else:
+            self.current_box = None
 
     # First Strategy for autonomous
-    def auto_strategy_1(self):
-        
+    def strategy_1(self):
+
         # If both scrolls are detected --> stop
         if self.confirmed_count >= REQUIRED_SCROLLS:
             return (0.0, 0.0, 0.0)
@@ -134,57 +194,91 @@ class PilotTeleopNode(Node):
         # Start a timer
         now = time.monotonic()
         # Calculate time passed
-        time_passed = now - self.search_timer
+        time_passed = now - self.strategy1_timer
 
         linTarget, linTarget1, angTarget = 0.0, 0.0, 0.0
 
         # Check the search phase
-        if self.search_phase == 'ROTATE':
+        if self.strategy1_phase == 'ROTATE':
             angTarget = ANGULAR_VEL
             # If time for rotation ends, start time for pause and search
             if time_passed >= ROTATE_THETA_TIME:
-                self.search_phase = 'PAUSE'
-                self.search_timer = now
+                self.strategy1_phase = 'PAUSE'
+                self.strategy1_timer = now
 
-        elif self.search_phase == 'PAUSE':
+        elif self.strategy1_phase == 'PAUSE':
             # Don't change the values of the velocities
             ...
             if time_passed >= PAUSE_TIME:
-                self.search_phase = 'STRAFE'
-                self.search_timer = now
+                self.strategy1_phase = 'STRAFE'
+                self.strategy1_timer = now
 
-        elif self.search_phase == 'STRAFE':
+        elif self.strategy1_phase == 'STRAFE':
             linTarget1 = SEARCH_LINEAR_VEL
             if time_passed >= SEARCH_MOVE_TIME:
-                self.search_phase = 'ROTATE_BACK'
-                self.search_timer = now
+                self.strategy1_phase = 'ROTATE_BACK'
+                self.strategy1_timer = now
 
-        elif self.search_phase == 'ROTATE_BACK':
+        elif self.strategy1_phase == 'ROTATE_BACK':
             linTarget1 = -ANGULAR_VEL
             if time_passed >= ROTATE_THETA_TIME:
-                self.search_phase = 'ROTATE'
-                self.search_timer = now
+                self.strategy1_phase = 'ROTATE'
+                self.strategy1_timer = now
 
         # Return the values of the velocities
         return linTarget, linTarget1, angTarget
-        
-        
 
-        
+    def strategy_2(self):
+        # If both scrolls are already confirmed, stop moving entirely
+        if self.confirmed_count >= REQUIRED_SCROLLS:
+            return (0.0, 0.0, 0.0)
+
+        linTarget, linTarget1, angTarget = 0.0, 0.0, 0.0
+
+        if not hasattr(self, 'frame_width') or self.current_box is None:
+            self.strategy2_phase = 'SEARCHING'
+            angTarget = SEARCH_ANGULAR_VEL
+            return linTarget, linTarget1, angTarget
+
+        x, y, w, h, contour = self.current_box
+        bbox_center_x = x + w / 2.0
+        error_x = (bbox_center_x - self.frame_width / 2.0) / (self.frame_width / 2.0)
+        bbox_height_ratio = h / float(self.frame_height)
+
+        if abs(error_x) > CENTER_TOLERANCE:
+            self.strategy2_phase = 'CENTERING'
+            angTarget = -KP_ANGULAR * error_x
+            return linTarget, linTarget1, angTarget
+
+        if bbox_height_ratio < STOP_HEIGHT_RATIO:
+            self.strategy2_phase = 'APPROACHING'
+            linTarget = KP_LINEAR * (STOP_HEIGHT_RATIO - bbox_height_ratio)
+            angTarget = -KP_ANGULAR * error_x
+            return linTarget, linTarget1, angTarget
+
+        self.strategy2_phase = 'AT_BOX'
+        return linTarget, linTarget1, angTarget
+
+    def apply_ultrasonic_safety(self, linTarget, linTarget1, angTarget):
+        if self.obstacle_close and linTarget > 0.0:
+            linTarget = 0.0
+        return linTarget, linTarget1, angTarget
 
     def ultrasonic_callback(self, msg):
         
         self.get_logger().info(str(msg.data))
         distance  = msg.data
 
-        if distance <= 10:
+        if distance <= SAFE_DISTANCE_CM:
             self.get_logger().info(f"Bad Distance = {distance}")
+            self.obstacle_close = True
             msg = Twist()
             msg.linear.x = 0.0
             msg.angular.z = 0.0
             self.ultasonic_safety_pub.publish(msg)
         else:
             self.get_logger().info(f"Good Distance = {distance}")
+            self.obstacle_close = False
 
 
 def main(args=None):

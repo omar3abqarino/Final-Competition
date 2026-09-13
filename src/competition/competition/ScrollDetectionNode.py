@@ -5,8 +5,7 @@ from std_msgs.msg import Bool, Float32, Int32
 from cv_bridge import CvBridge
 import cv2
 from rclpy.executors import ExternalShutdownException
-import numpy as np
-
+from box_detection import detect_boxes
 
 
 class ScrollDetectionNode(Node):
@@ -22,6 +21,7 @@ class ScrollDetectionNode(Node):
         self.bridge = CvBridge()
         self.hits = 0
         self.done = False
+        self.confirmed_count = 0
 
         # subscribe to image
         self.imgSub = self.create_subscription(Image, '/mono/image', self.image_callback, 10)
@@ -43,7 +43,7 @@ class ScrollDetectionNode(Node):
         cv2.imshow("Camera Capture", frame)
         cv2.waitKey(1)
         self.get_logger().info("before")
-        detection = self.detect(frame)
+        detection = detect_boxes(frame)
         self.get_logger().info("after")
 
         if len(detection) >= self.numOfdetections:
@@ -51,33 +51,16 @@ class ScrollDetectionNode(Node):
         else:
             self.hits = 0
 
-        # if self.hits >= self.framesNeeded:
-        #     self.done = True
-        #     self.statusPub.publish(Bool(data=True))
-        #     self.get_logger().info('detection done')
+        if self.hits >= self.framesNeeded and self.confirmed_count < self.numOfdetections:
+            self.confirmed_count += 1
+            self.hits = 0
+            self.confirm_pub.publish(Int32(data=self.confirmed_count))
+            self.get_logger().info(f'Scroll confirmed: {self.confirmed_count}/{self.numOfdetections}')
 
-    def detect(self, frame):
-        # TODO : add model detection here, placeholder = edge/contour based
-        blurred = cv2.GaussianBlur(frame, (5, 5), 0)
-        edges = cv2.Canny(blurred, 50, 150)
-        kernel = np.ones((3, 3), np.uint8)
-        closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
-        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        boxes = []
-        for c in contours:
-            area = cv2.contourArea(c)
-            if area < 500:
-                continue
-            x, y, w, h = cv2.boundingRect(c)
-            aspect = w / float(h)
-            if 0.7 < aspect < 1.4:
-                boxes.append((x, y, w, h))
-        return boxes
-
-
-
-
+            if self.confirmed_count >= self.numOfdetections:
+                self.done = True
+                self.statusPub.publish(Bool(data=True))
+                self.get_logger().info('detection done')
 
 def main(args=None):
     rclpy.init(args=args)
@@ -87,7 +70,6 @@ def main(args=None):
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        
         if rclpy.ok():
             node.destroy_node()
             rclpy.shutdown()
