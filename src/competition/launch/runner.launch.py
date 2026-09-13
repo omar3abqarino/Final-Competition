@@ -42,5 +42,6 @@ def generate_launch_description():
     )
     return LaunchDescription([
         detection,
-        controller 
+        controller,
+        ultrasonic_node
     ])

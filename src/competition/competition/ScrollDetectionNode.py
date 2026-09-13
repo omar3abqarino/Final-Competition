@@ -7,7 +7,7 @@ import cv2
 from rclpy.executors import ExternalShutdownException
 import numpy as np
 import time
-
+from ultralytics import YOLO 
 
 
 class ScrollDetectionNode(Node):
@@ -18,6 +18,7 @@ class ScrollDetectionNode(Node):
         self.declare_parameter('framesNeeded', 5)
         # Added cooldown to avoid double detection of same scroll
         self.declare_parameter('cooldown', 2.0)
+        # Model
 
         self.numOfdetections = self.get_parameter('numOfdetections').value
         self.framesNeeded = self.get_parameter('framesNeeded').value
